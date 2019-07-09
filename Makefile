@@ -14,6 +14,9 @@ run:
 push:
 	docker push ${IMAGE}
 
+tests:
+	pipenv run pytest --cov=file-uploader
+
 dependencies:
 	pipenv install --dev
 
