@@ -63,6 +63,9 @@ def _parse_cli_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-dir", "-i", type=Path, required=True, help="Folder path of the files to process")
     parser.add_argument("--pattern", "-p", required=False, default="*", help="Filename pattern to match against")
+    parser.add_argument(
+        "--recursive", "-r", required=False, default=True, action="store_true", help="Search recursively for files"
+    )
     parser.add_argument("--api-key", "-k", required=False, help="CDF API KEY")
     parser.add_argument(
         "--log", type=Path, required=False, default=Path(__file__).absolute().parent / "log", help="Log folder"
@@ -96,14 +99,21 @@ def _configure_logger(folder_path: Path, log_level: str) -> None:
         google.cloud.logging.Client().setup_logging(name="file-uploader-python")
 
 
-def read_all_files(root_path: Path, filename_pattern: str = "*", recursive: bool = True) -> Sequence[Path]:
+def match_files(root_path: Path, filename_pattern: str = "*", recursive: bool = True) -> Sequence[Path]:
+    """Find all files matching pattern 'filename_pattern' in 'root_path'."""
     paths = root_path.rglob(filename_pattern) if recursive else root_path.glob(filename_pattern)
     filtered_paths = [path for path in paths if path.is_file() and not path.name.startswith(".")]
     logger.info("Found {} files in {!s}".format(len(filtered_paths), root_path))
     return filtered_paths
 
 
+def convert_to_file_objects(root_path: Path, paths: Sequence[Path]) -> Sequence[FileWithMeta]:
+    """Convert file 'paths' to objects with metadata."""
+    return [FileWithMeta.from_path(p, root_path) for p in paths]
+
+
 def upload_metadata_to_raw(client: CogniteClient, objects: Sequence[FileWithMeta], database: str, table: str):
+    """Upload metadata of file 'objects' to CDF RAW."""
     rows = [Row(obj.external_id, obj.raw_columns()) for obj in objects]
     start_time = time.time()
     client.raw.rows.insert(database, table, rows, ensure_parent=True)
@@ -115,6 +125,7 @@ def upload_metadata_to_raw(client: CogniteClient, objects: Sequence[FileWithMeta
 def upload_files_to_cdf(
     client: CogniteClient, objects: Sequence[FileWithMeta], overwrite: bool = True, ignore_meta: bool = False
 ) -> None:
+    """Upload the file 'objects' to CDF Clean."""
     for i, obj in enumerate(objects):
         file_index = "[{}:{}]".format(i, len(objects) - 1)
         logger.debug("{} Starting upload of {}".format(file_index, obj.path))
@@ -139,6 +150,28 @@ def upload_files_to_cdf(
             logger.debug("{} {!s}".format(file_index, res))
 
 
+def process_path(
+    client: CogniteClient,
+    root_path: Path,
+    pattern: str = "*",
+    recursive: bool = True,
+    upload_to_cdf: bool = True,
+    upload_to_raw: bool = False,
+    overwrite: bool = True,
+    ignore_meta: bool = False,
+    raw_db: str = None,
+    raw_table: str = None,
+) -> None:
+    """Find files in 'root_path' and upload them to CDF."""
+    file_paths = match_files(root_path, pattern, recursive=recursive)
+    file_objects = convert_to_file_objects(root_path, file_paths)
+
+    if upload_to_raw:
+        upload_metadata_to_raw(client, file_objects, raw_db, raw_table)
+    if upload_to_cdf:
+        upload_files_to_cdf(client, file_objects, overwrite, ignore_meta)
+
+
 def main(args):
     _configure_logger(args.log, args.log_level)
 
@@ -149,7 +182,6 @@ def main(args):
     if not args.input_dir.exists():
         logger.fatal("Input folder does not exists: {!s}".format(args.input_dir))
         sys.exit(2)
-    root_path = args.input_dir
 
     try:
         client = CogniteClient(api_key=api_key, client_name=COGNITE_CLIENT_NAME)
@@ -159,14 +191,18 @@ def main(args):
         client = CogniteClient(api_key=api_key, client_name=COGNITE_CLIENT_NAME)
 
     try:
-        file_paths = read_all_files(root_path, args.pattern)
-        file_objects = [FileWithMeta.from_path(p, root_path) for p in file_paths]
-
-        if args.upload_to_raw:
-            upload_metadata_to_raw(client, file_objects, args.raw_db, args.raw_table)
-        if args.upload_to_cdf:
-            upload_files_to_cdf(client, file_objects, not args.no_overwrite, args.ignore_meta)
-
+        process_path(
+            client,
+            args.input_dir,
+            args.pattern,
+            args.recursive,
+            args.upload_to_cdf,
+            args.upload_to_raw,
+            not args.no_overwrite,
+            args.ignore_meta,
+            args.raw_db,
+            args.raw_table,
+        )
     except KeyboardInterrupt:
         logger.warning("Extractor stopped")
     except Exception as exc:

@@ -4,12 +4,29 @@ A module for testing the extractor.
 """
 from pathlib import Path
 
-from upload_file import read_all_files
+from upload_file import FileWithMeta, convert_to_file_objects, match_files
 
 
 class TestExtractor:
     folder_path = Path(__file__).parent / "test-files"
 
-    def test_find_files_in_path_historical(self):
-        files = read_all_files(self.folder_path)
-        assert len(files) == 1
+    def test_match_files(self):
+        assert len(match_files(self.folder_path)) is 2
+        files = match_files(self.folder_path, "*.pdf")
+        assert len(files) is 1
+        assert files[0].name == "hidden.pdf"
+        assert len(match_files(self.folder_path, "*", recursive=False)) is 1
+
+    def test_convert_to_file_objects(self):
+        paths = [self.folder_path / "example.txt"]
+        objects = convert_to_file_objects(self.folder_path, paths)
+        assert len(objects) is 1
+        assert objects[0].name == "example.txt"
+
+    def test_convert_metadata(self):
+        path = self.folder_path / "recursive" / "hidden.pdf"
+        obj = FileWithMeta.from_path(path, self.folder_path)
+        assert obj.metadata
+        assert obj.metadata["folder"] == "recursive"
+        assert obj.name == "hidden.pdf"
+        assert obj.path == path
