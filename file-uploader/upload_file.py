@@ -64,7 +64,7 @@ def _parse_cli_args():
     parser.add_argument("--input-dir", "-i", type=Path, required=True, help="Folder path of the files to process")
     parser.add_argument("--pattern", "-p", required=False, default="*", help="Filename pattern to match against")
     parser.add_argument(
-        "--recursive", "-r", required=False, default=True, action="store_true", help="Search recursively for files"
+        "--non-recursive", required=False, action="store_true", help="Don't search recursively for files"
     )
     parser.add_argument("--api-key", "-k", required=False, help="CDF API KEY")
     parser.add_argument(
@@ -195,7 +195,7 @@ def main(args):
             client,
             args.input_dir,
             args.pattern,
-            args.recursive,
+            not args.non_recursive,
             args.upload_to_cdf,
             args.upload_to_raw,
             not args.no_overwrite,
