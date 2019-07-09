@@ -11,16 +11,16 @@ class TestExtractor:
     folder_path = Path(__file__).parent / "test-files"
 
     def test_match_files(self):
-        assert len(match_files(self.folder_path)) is 2
+        assert len(match_files(self.folder_path)) == 2
         files = match_files(self.folder_path, "*.pdf")
-        assert len(files) is 1
+        assert len(files) == 1
         assert files[0].name == "hidden.pdf"
-        assert len(match_files(self.folder_path, "*", recursive=False)) is 1
+        assert len(match_files(self.folder_path, "*", recursive=False)) == 1
 
     def test_convert_to_file_objects(self):
         paths = [self.folder_path / "example.txt"]
         objects = convert_to_file_objects(self.folder_path, paths)
-        assert len(objects) is 1
+        assert len(objects) == 1
         assert objects[0].name == "example.txt"
 
     def test_convert_metadata(self):

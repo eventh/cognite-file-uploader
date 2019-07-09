@@ -75,6 +75,9 @@ def _parse_cli_args():
     parser.add_argument("--upload-to-cdf", required=False, action="store_true", help="Upload files to CDF")
     parser.add_argument("--no-overwrite", required=False, action="store_true", help="Do not overwrite uploaded file")
     parser.add_argument(
+        "--ignore-existing", required=False, action="store_true", help="Only upload files not already uploaded"
+    )
+    parser.add_argument(
         "--ignore-meta", required=False, action="store_true", help="Ignore metadata when uploading file"
     )
     parser.add_argument("--upload-to-raw", required=False, action="store_true", help="Upload metadata to raw")
@@ -111,6 +114,12 @@ def match_files(root_path: Path, filename_pattern: str = "*", recursive: bool = 
 def convert_to_file_objects(root_path: Path, paths: Sequence[Path]) -> Sequence[FileWithMeta]:
     """Convert file 'paths' to objects with metadata."""
     return [FileWithMeta.from_path(p, root_path) for p in paths]
+
+
+def filter_away_existing_files(client: CogniteClient, objects: Sequence[FileWithMeta]) -> Sequence[FileWithMeta]:
+    """Remove files that are already uploaded to CDF."""
+    existing_ids = {o.external_id for o in client.files.list(uploaded=True, limit=None) if o.external_id}
+    return [o for o in objects if o.external_id and o.external_id in existing_ids]
 
 
 def upload_metadata_to_raw(client: CogniteClient, objects: Sequence[FileWithMeta], database: str, table: str):
@@ -159,6 +168,7 @@ def process_path(
     upload_to_cdf: bool = True,
     upload_to_raw: bool = False,
     overwrite: bool = True,
+    ignore_existing: bool = False,
     ignore_meta: bool = False,
     raw_db: str = None,
     raw_table: str = None,
@@ -166,6 +176,9 @@ def process_path(
     """Find files in 'root_path' and upload them to CDF."""
     file_paths = match_files(root_path, pattern, recursive=recursive)
     file_objects = convert_to_file_objects(root_path, file_paths)
+
+    if ignore_existing:
+        file_objects = filter_away_existing_files(client, file_objects)
 
     if upload_to_raw:
         upload_metadata_to_raw(client, file_objects, raw_db, raw_table)
@@ -200,6 +213,7 @@ def main(args):
             args.upload_to_cdf,
             args.upload_to_raw,
             not args.no_overwrite,
+            args.ignore_existing,
             args.ignore_meta,
             args.raw_db,
             args.raw_table,
