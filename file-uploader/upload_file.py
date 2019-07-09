@@ -54,7 +54,8 @@ class FileWithMeta:
         obj = {"name": self.name, "external_id": self.external_id}
         if self.mime_type:
             obj["mime_type"] = self.mime_type
-        obj.update(self.metadata)
+        if self.metadata:
+            obj.update(self.metadata)
         return obj
 
 
